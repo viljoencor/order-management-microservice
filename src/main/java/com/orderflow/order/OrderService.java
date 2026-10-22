@@ -82,7 +82,7 @@ public class OrderService {
         for (OrderItemRequest item : requested) {
             if (!seen.add(item.productId())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Product " + item.productId() + " appears more than once in the order");
+                        "Duplicate product IDs are not allowed in one order (product " + item.productId() + ")");
             }
         }
     }
@@ -91,7 +91,7 @@ public class OrderService {
         List<Long> missing = productIds.stream().filter(id -> !found.containsKey(id)).sorted().toList();
         if (!missing.isEmpty()) {
             ResponseStatusException error = new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, "Some products in the order do not exist");
+                    HttpStatus.NOT_FOUND, "One or more products were not found");
             // Becomes an extra field in the ProblemDetail response body.
             error.getBody().setProperty("missingProductIds", missing);
             throw error;

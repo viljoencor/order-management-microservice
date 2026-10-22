@@ -18,7 +18,7 @@ The aim is to keep the service easy to understand and test, while making deliber
 - **Phase 2 - Products:** Create, retrieve and list products; request validation and initial unit/integration tests.
 - **Phase 2 final check:** Confirm the Maven process exits successfully after verification.
 - **Phase 3 - Orders (complete):** Order items, product existence checks, price snapshots and calculated totals in one transaction.
-- **Phase 4 - Errors and tests:** Consistent error responses and broader integration coverage.
+- **Phase 4 - Errors and tests (complete):** Consistent error responses and broader integration coverage.
 - **Phase 5 - Documentation and logging:** Meaningful request logging, Swagger/OpenAPI and usage examples.
 - **Phase 6 - Docker:** Container image and a simple local run option.
 - **Phase 7 - Kubernetes/Rancher:** Optional single-replica deployment example.
@@ -148,6 +148,47 @@ Example response (`201 Created`, with a `Location` header pointing at the new or
 
 Clients send only product IDs and quantities. Prices and totals always come from the server. Quantities must be whole numbers from 1 to 1000, an order needs at least one item, and the same product cannot appear twice in one order (`400`). If any product does not exist the whole order is rejected with `404`, and the response lists every missing ID in `missingProductIds`.
 
+## Error handling
+
+All endpoints require HTTP Basic authentication. Missing or wrong credentials return `401`; this is answered by Spring Security before the request reaches a controller, so it does not use the JSON format below.
+
+Every other error is returned as an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details response (`application/problem+json`), handled in one class, `GlobalExceptionHandler`. Responses never contain stack traces, exception class names or database details.
+
+| Situation | Status |
+| --- | --- |
+| Invalid fields, malformed JSON (including a fractional quantity such as `1.5`), duplicate product IDs in an order | `400` |
+| Unknown product or order, or products missing from an order | `404` |
+
+Validation error, with field errors sorted by field name:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Request validation failed",
+  "instance": "/api/v1/products",
+  "fieldErrors": [
+    { "field": "name", "message": "must not be blank" }
+  ]
+}
+```
+
+Order that references products that do not exist (nothing is saved):
+
+```json
+{
+  "type": "about:blank",
+  "title": "Not Found",
+  "status": 404,
+  "detail": "One or more products were not found",
+  "instance": "/api/v1/orders",
+  "missingProductIds": [10, 20]
+}
+```
+
+Unreadable JSON returns the fixed message `Malformed or invalid JSON request`. Unexpected server errors fall back to Spring Boot's default handling, which does not expose internals; request logging is still to come.
+
 ## Design notes
 
 - **One service:** This domain does not need distributed services for the challenge.
@@ -166,4 +207,4 @@ Run all tests through Maven:
 .\mvnw.cmd clean verify
 ```
 
-Current tests (61) cover product and order service behaviour, authenticated API requests, validation, exact decimal totals, price snapshots, missing products, H2 persistence, and rollback of a failed order. Error responses are still the framework defaults; consistent error handling comes in a later phase.
+Current tests (79) cover product and order service behaviour, authenticated API requests, validation, exact decimal totals, price snapshots, missing products, H2 persistence, rollback of a failed order, and the structure of every error response.
