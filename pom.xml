@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Steps - pom.xml
+  Steps
   Use Spring Boot 4.1.1 and let its BOM manage dependency versions.
   Build for Java 21 with Maven.
-  Add only what Phase 1 needs: web, JPA, H2, security and test starters.
+  Add only what is needed so far: web, JPA, validation, H2, security and test starters.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"

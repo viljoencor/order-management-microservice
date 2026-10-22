@@ -10,6 +10,13 @@ spring:
   h2:
     console:
       enabled: false
+  jackson:
+    deserialization:
+      # Without this, a quantity of 1.5 is silently truncated to 1.
+      accept-float-as-int: false
+  mvc:
+    problemdetails:
+      enabled: true
   jpa:
     hibernate:
       ddl-auto: create-drop
