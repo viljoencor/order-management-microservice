@@ -16,6 +16,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -74,6 +77,19 @@ public class OrderService {
     @Transactional(readOnly = true)
     public List<Order> list() {
         return orderRepository.findAllByOrderByIdAsc();
+    }
+
+    // Two queries on purpose: page the ids in the database, then fetch only those orders with their items.
+    // Fetching the items collection in the paged query itself would force in-memory paging.
+    @Transactional(readOnly = true)
+    public Page<Order> list(Pageable pageable) {
+        Page<Long> ids = orderRepository.findIds(pageable);
+        if (ids.isEmpty()) {
+            return new PageImpl<>(List.of(), pageable, ids.getTotalElements());
+        }
+        // Ordered by id in the query, which is the same order the page of ids was sorted in.
+        List<Order> orders = orderRepository.findAllByIdInOrderByIdAsc(ids.getContent());
+        return new PageImpl<>(orders, pageable, ids.getTotalElements());
     }
 
     // Repeated ids are rejected rather than guessing whether the client wanted separate lines.

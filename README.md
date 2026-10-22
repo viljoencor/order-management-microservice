@@ -3,27 +3,28 @@ Steps
 Explain the project and how to run it locally.
 Show what has been implemented so far.
 Show an order example and the database schema.
-Show how to run the application with Docker Compose.
-Add Kubernetes instructions once tested.
+Add the Maven, Docker and Swagger instructions.
 -->
 
 # OrderFlow API
 
 A small order management microservice built with **Java 21, Spring Boot and Maven** as part of a backend technical challenge.
 
-The aim is to keep the service easy to understand and test, while making deliberate choices around validation, persistence and error handling. The project is being built in small steps; this README will change as each part is completed.
+It manages products and orders through a REST API: create, retrieve and list products, and create, retrieve and list orders. Order totals are calculated on the server from the current product prices, each order item keeps the price at the time of ordering, and an order and its items are saved in one transaction. All endpoints, including the Swagger documentation, require HTTP Basic authentication. Data is stored in an in-memory H2 database.
 
-## Current progress
+The aim is to keep the service easy to understand and test, while making deliberate choices around validation, persistence and error handling.
+
+## Development milestones
+
+The project was built in small steps:
 
 - **Phase 1 - Foundation:** Maven project, Spring Boot, in-memory H2 and HTTP Basic authentication.
 - **Phase 2 - Products:** Create, retrieve and list products; request validation and initial unit/integration tests.
-- **Phase 2 final check:** Confirm the Maven process exits successfully after verification.
-- **Phase 3 - Orders (complete):** Order items, product existence checks, price snapshots and calculated totals in one transaction.
-- **Phase 4 - Errors and tests (complete):** Consistent error responses and broader integration coverage.
-- **Phase 5 - Documentation and logging (complete):** Request logging with request IDs, Swagger/OpenAPI behind authentication, and usage examples.
-- **Phase 6 - Docker (complete):** Container image and a simple local run option with Docker Compose.
-- **Phase 7 - Kubernetes/Rancher:** Optional single-replica deployment example.
-- **Phase 8 - Final review:** Optional CI checks, cleanup and submission verification.
+- **Phase 3 - Orders:** Order items, product existence checks, price snapshots and calculated totals in one transaction.
+- **Phase 4 - Errors and tests:** Consistent error responses and broader integration coverage.
+- **Phase 5 - Documentation and logging:** Request logging with request IDs, Swagger/OpenAPI behind authentication, and usage examples.
+- **Phase 6 - Docker:** Container image and a simple local run option with Docker Compose.
+- **Phase 7A - Pagination:** Optional `page` and `size` parameters on the product and order lists, applied in the database.
 
 ## Technology
 
@@ -35,7 +36,7 @@ The aim is to keep the service easy to understand and test, while making deliber
 - Springdoc OpenAPI 3.1.1 (Swagger UI)
 - JUnit 5, Mockito and Spring MVC integration tests
 
-## Architecture (current)
+## Architecture
 
 ```mermaid
 flowchart TD
@@ -105,16 +106,32 @@ $env:ORDERFLOW_PASSWORD = "replace-with-a-local-password"
 .\mvnw.cmd spring-boot:run
 ```
 
+On Linux or macOS, with `JAVA_HOME` pointing to JDK 21:
+
+```bash
+./mvnw clean verify
+
+# Set your own local development credentials (do not commit them).
+export ORDERFLOW_USER="local-user"
+export ORDERFLOW_PASSWORD="replace-with-a-local-password"
+
+./mvnw spring-boot:run
+```
+
 The API uses the default local address `http://localhost:8080` unless configured otherwise. The application requires both credential variables at startup. All API routes require authentication.
 
-To use another port, run the packaged jar with `java -jar target\orderflow-api-0.0.1-SNAPSHOT.jar --server.port=8089` (after `.\mvnw.cmd clean verify`, with the credential variables set).
+To use another port, run the packaged jar with `java -jar target/orderflow-api-0.0.1-SNAPSHOT.jar --server.port=8089` (after `clean verify`, with the credential variables set; use a backslash in the path on Windows).
 
 **Note:** H2 is in memory. Data is lost when the application stops; this is intentional for the exercise.
 
-Quick check from PowerShell once the app is running (use the credentials you set above):
+Quick check once the app is running (use the credentials you set above):
 
 ```powershell
 curl.exe -u "$env:ORDERFLOW_USER`:$env:ORDERFLOW_PASSWORD" http://localhost:8080/api/v1/products
+```
+
+```bash
+curl -u "$ORDERFLOW_USER:$ORDERFLOW_PASSWORD" http://localhost:8080/api/v1/products
 ```
 
 ## API documentation (Swagger)
@@ -146,11 +163,21 @@ Docker is an alternative way to run the same application; Maven remains the main
 
 **Prerequisites:** a running Docker engine with Docker Compose v2 (for example Rancher Desktop with the Moby/dockerd engine, or Docker Desktop).
 
-Set demonstration credentials in PowerShell (both are required; Compose stops with an error if either is missing), then build and start:
+Set demonstration credentials (both are required; Compose stops with an error if either is missing), then build and start. PowerShell:
 
 ```powershell
 $env:ORDERFLOW_USER = "local-user"
 $env:ORDERFLOW_PASSWORD = "replace-with-a-local-password"
+
+docker compose up --build -d
+docker compose ps
+```
+
+Linux or macOS:
+
+```bash
+export ORDERFLOW_USER="local-user"
+export ORDERFLOW_PASSWORD="replace-with-a-local-password"
 
 docker compose up --build -d
 docker compose ps
@@ -162,9 +189,13 @@ The first build runs the whole test suite inside Docker, so it takes a few minut
 curl.exe -u "$env:ORDERFLOW_USER`:$env:ORDERFLOW_PASSWORD" http://localhost:8089/api/v1/products
 ```
 
+```bash
+curl -u "$ORDERFLOW_USER:$ORDERFLOW_PASSWORD" http://localhost:8089/api/v1/products
+```
+
 Swagger UI is at `http://localhost:8089/swagger-ui/index.html` and the OpenAPI JSON at `http://localhost:8089/v3/api-docs`, both with the same credentials.
 
-```powershell
+```bash
 docker compose logs --tail=50 orderflow-api   # application logs (written to standard output)
 docker compose down                            # stop and remove this project's container
 ```
@@ -223,6 +254,35 @@ Example response (`201 Created`, with a `Location` header pointing at the new or
 
 Clients send only product IDs and quantities. Prices and totals always come from the server. Quantities must be whole numbers from 1 to 1000, an order needs at least one item, and the same product cannot appear twice in one order (`400`). If any product does not exist the whole order is rejected with `404`, and the response lists every missing ID in `missingProductIds`.
 
+## Pagination
+
+The two list endpoints, `GET /api/v1/products` and `GET /api/v1/orders`, accept optional `page` and `size` query parameters.
+
+- Without them you get the full array, exactly as before.
+- With them you must send **both**. Pages are numbered from 0, `size` must be between 1 and 100, and results are sorted by ID ascending.
+- The body is still a plain array of the same product or order objects. The page details are in response headers:
+
+| Header | Meaning |
+| --- | --- |
+| `X-Total-Count` | Total number of records |
+| `X-Total-Pages` | Total number of pages for the requested size |
+| `X-Page` | The requested page number (from 0) |
+| `X-Page-Size` | The requested page size |
+
+- A page beyond the last one returns `200` with an empty array (the headers still show the totals).
+- A missing parameter, a negative `page`, a `size` outside 1-100, a non-numeric value, or a `page` so large that its row offset would not fit in an `int` returns `400`.
+
+```bash
+curl -u "$ORDERFLOW_USER:$ORDERFLOW_PASSWORD" -i "http://localhost:8080/api/v1/products?page=0&size=2"
+curl -u "$ORDERFLOW_USER:$ORDERFLOW_PASSWORD" -i "http://localhost:8080/api/v1/orders?page=1&size=10"
+```
+
+```powershell
+curl.exe -u "$env:ORDERFLOW_USER`:$env:ORDERFLOW_PASSWORD" -i "http://localhost:8080/api/v1/products?page=0&size=2"
+```
+
+**Why in the database:** `LIMIT`/`OFFSET` is applied by the database, so only the requested rows are read and sent to the application, instead of loading every row and slicing the list in Java. For orders this takes two queries: first the ids of the requested page, then only those orders together with their items and products. Fetching the items collection in the paged query itself would make Hibernate page in memory, and the two-query approach also avoids one query per order. A test checks the loaded entities and the number of SQL statements.
+
 ## Error handling
 
 All endpoints require HTTP Basic authentication. Missing or wrong credentials return `401`; this is answered by Spring Security before the request reaches a controller, so it does not use the JSON format below.
@@ -231,7 +291,7 @@ Every other error is returned as an [RFC 9457](https://www.rfc-editor.org/rfc/rf
 
 | Situation | Status |
 | --- | --- |
-| Invalid fields, malformed JSON (including a fractional quantity such as `1.5`), duplicate product IDs in an order | `400` |
+| Invalid fields, malformed JSON (including a fractional quantity such as `1.5`), duplicate product IDs in an order, invalid pagination parameters | `400` |
 | Unknown product or order, or products missing from an order | `404` |
 
 Validation error, with field errors sorted by field name:
@@ -280,7 +340,7 @@ Unreadable JSON returns the fixed message `Malformed or invalid JSON request`. U
 ## Known limitations
 
 - Data is lost when the application restarts, and the service must run as a single instance because H2 is in memory.
-- Lists are not paginated.
+- Pagination is optional: without `page` and `size` the lists return every record.
 - Products and orders cannot be updated or deleted.
 - The demo uses one configured user; there are no roles or user management.
 
@@ -292,4 +352,4 @@ Run all tests through Maven:
 .\mvnw.cmd clean verify
 ```
 
-Current tests (102) cover product and order service behaviour, authenticated API requests, validation, exact decimal totals, price snapshots, missing products, H2 persistence, rollback of a failed order, the structure of every error response, an unexpected 500 error, request logging and request IDs, and the secured Swagger/OpenAPI endpoints.
+Current tests (141) cover product and order service behaviour, authenticated API requests, validation, exact decimal totals, price snapshots, missing products, H2 persistence, rollback of a failed order, the structure of every error response, an unexpected 500 error, request logging and request IDs, the secured Swagger/OpenAPI endpoints, and pagination (parameter rules, headers, page contents and the database-level paging of orders).

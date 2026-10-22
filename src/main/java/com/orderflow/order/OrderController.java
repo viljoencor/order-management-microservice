@@ -4,6 +4,7 @@
 // Return 201 with a Location header, 200 for reads.
 package com.orderflow.order;
 
+import com.orderflow.common.Pagination;
 import com.orderflow.order.dto.CreateOrderRequest;
 import com.orderflow.order.dto.OrderResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,14 +13,18 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -63,8 +68,19 @@ public class OrderController {
     }
 
     @GetMapping
-    @Operation(summary = "List all orders")
-    public List<OrderResponse> list() {
-        return orderService.list().stream().map(OrderResponse::from).toList();
+    @Operation(summary = "List orders",
+            description = "Returns all orders. Send both page (from 0) and size (1 to 100) to get one page, "
+                    + "sorted by id, with X-Total-Count, X-Total-Pages, X-Page and X-Page-Size response headers.")
+    @ApiResponse(responseCode = "400", description = "Only one of page and size, or an invalid value")
+    public ResponseEntity<List<OrderResponse>> list(
+            @RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size) {
+        Optional<Pageable> pageable = Pagination.parse(page, size);
+        if (pageable.isEmpty()) {
+            return ResponseEntity.ok(orderService.list().stream().map(OrderResponse::from).toList());
+        }
+        Page<Order> result = orderService.list(pageable.get());
+        return ResponseEntity.ok()
+                .headers(Pagination.headers(result))
+                .body(result.getContent().stream().map(OrderResponse::from).toList());
     }
 }

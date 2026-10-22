@@ -6,6 +6,8 @@ package com.orderflow.product;
 
 import com.orderflow.product.dto.CreateProductRequest;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -33,5 +35,10 @@ public class ProductService {
 
     public List<Product> list() {
         return productRepository.findAllByOrderByIdAsc();
+    }
+
+    // The sort (by id) is already inside the Pageable, and the database applies the limit and offset.
+    public Page<Product> list(Pageable pageable) {
+        return productRepository.findAll(pageable);
     }
 }
