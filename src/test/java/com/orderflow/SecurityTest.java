@@ -49,8 +49,8 @@ class SecurityTest {
 
     @Test
     void requestWithCorrectCredentialsPassesSecurity() throws Exception {
-        // No controller exists yet, so a correct login ends in 404 rather than 401.
-        mockMvc.perform(get("/api/v1/products").with(httpBasic("test-user", "test-password")))
+        // Nothing is mapped here, so a correct login ends in 404 rather than 401.
+        mockMvc.perform(get("/api/v1/unmapped").with(httpBasic("test-user", "test-password")))
                 .andExpect(status().isNotFound());
     }
 }

@@ -1,7 +1,7 @@
 <!--
-TODO
-[x] Explain the project and how to run it locally.
-[x] Show what has been implemented so far.
+Steps
+Explain the project and how to run it locally.
+Show what has been implemented so far.
 [ ] Add order examples when order management is complete.
 [ ] Add Docker and Kubernetes instructions once tested.
 -->
