@@ -1,0 +1,19 @@
+# Steps
+# Build and run the single application container from the local Dockerfile.
+# Require ORDERFLOW_USER and ORDERFLOW_PASSWORD from the host environment.
+# Publish the app on localhost only, port 8089 by default.
+# Run one instance only: the H2 database is in memory and not shared between containers.
+name: orderflow
+
+services:
+  orderflow-api:
+    build: .
+    image: orderflow-api:local
+    container_name: orderflow-api
+    ports:
+      - "127.0.0.1:${ORDERFLOW_HOST_PORT:-8089}:8080"
+    environment:
+      ORDERFLOW_USER: ${ORDERFLOW_USER:?Set ORDERFLOW_USER in your shell before starting}
+      ORDERFLOW_PASSWORD: ${ORDERFLOW_PASSWORD:?Set ORDERFLOW_PASSWORD in your shell before starting}
+    # A few retries for transient problems; a startup error is not retried forever.
+    restart: on-failure:3

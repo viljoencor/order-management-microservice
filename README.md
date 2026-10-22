@@ -3,7 +3,8 @@ Steps
 Explain the project and how to run it locally.
 Show what has been implemented so far.
 Show an order example and the database schema.
-Add Docker and Kubernetes instructions once tested.
+Show how to run the application with Docker Compose.
+Add Kubernetes instructions once tested.
 -->
 
 # OrderFlow API
@@ -20,7 +21,7 @@ The aim is to keep the service easy to understand and test, while making deliber
 - **Phase 3 - Orders (complete):** Order items, product existence checks, price snapshots and calculated totals in one transaction.
 - **Phase 4 - Errors and tests (complete):** Consistent error responses and broader integration coverage.
 - **Phase 5 - Documentation and logging (complete):** Request logging with request IDs, Swagger/OpenAPI behind authentication, and usage examples.
-- **Phase 6 - Docker:** Container image and a simple local run option.
+- **Phase 6 - Docker (complete):** Container image and a simple local run option with Docker Compose.
 - **Phase 7 - Kubernetes/Rancher:** Optional single-replica deployment example.
 - **Phase 8 - Final review:** Optional CI checks, cleanup and submission verification.
 
@@ -38,21 +39,26 @@ The aim is to keep the service easy to understand and test, while making deliber
 
 ```mermaid
 flowchart TD
-    Client[API client or Swagger UI] --> Log[Request logging filter - request ID]
-    Log --> Security[Spring Security - Basic Auth]
-    Security --> PC[Product Controller]
-    Security --> OC[Order Controller]
-    Security --> Docs[Swagger UI and OpenAPI JSON]
-    PC --> PS[Product Service]
-    OC --> OS[Order Service]
-    PS --> PR[Product Repository]
-    OS --> PR
-    OS --> OR[Order Repository]
-    PR --> H2[(H2 in-memory database)]
-    OR --> H2
-    PC -.-> EH[Global exception handler]
-    OC -.-> EH
+    Client[API client or Swagger UI]
+    subgraph Container["Optional: Docker container (host 127.0.0.1:8089 to container 8080)"]
+        Log[Request logging filter - request ID] --> Security[Spring Security - Basic Auth]
+        Security --> PC[Product Controller]
+        Security --> OC[Order Controller]
+        Security --> Docs[Swagger UI and OpenAPI JSON]
+        PC --> PS[Product Service]
+        OC --> OS[Order Service]
+        PS --> PR[Product Repository]
+        OS --> PR
+        OS --> OR[Order Repository]
+        PR --> H2[(H2 in-memory database)]
+        OR --> H2
+        PC -.-> EH[Global exception handler]
+        OC -.-> EH
+    end
+    Client --> Log
 ```
+
+The same application runs directly through Maven, as the packaged JAR, or inside the Docker container shown above.
 
 The application uses a simple layered design: controllers handle HTTP, services apply business rules, and repositories handle database access. The order service also reads products (through the product repository) to check they exist and to copy their prices. The logging filter runs first so that even rejected (401) requests are logged, and one exception handler turns errors into consistent JSON responses.
 
@@ -133,6 +139,39 @@ It also logs `Order created order_id=15 items=3` once an order has been committe
 **Request IDs:** if the client sends an `X-Request-ID` header made of letters, digits, `.`, `_` or `-` (up to 64 characters) it is kept; otherwise a UUID is generated. The effective ID is returned in the `X-Request-ID` response header and appears on every log line written during that request, so a client can quote it when reporting a problem.
 
 Logs contain only the path, never the query string, `Authorization` header, credentials or request/response bodies.
+
+## Run with Docker (optional)
+
+Docker is an alternative way to run the same application; Maven remains the main build. The `Dockerfile` builds and tests the project with Maven on Java 21 and copies only the packaged JAR into a Java 21 JRE image that runs as a non-root user. No credentials are stored in the image.
+
+**Prerequisites:** a running Docker engine with Docker Compose v2 (for example Rancher Desktop with the Moby/dockerd engine, or Docker Desktop).
+
+Set demonstration credentials in PowerShell (both are required; Compose stops with an error if either is missing), then build and start:
+
+```powershell
+$env:ORDERFLOW_USER = "local-user"
+$env:ORDERFLOW_PASSWORD = "replace-with-a-local-password"
+
+docker compose up --build -d
+docker compose ps
+```
+
+The first build runs the whole test suite inside Docker, so it takes a few minutes, and the application needs up to a minute to start after the container is up. The API is then at `http://localhost:8089` (published on localhost only; set `ORDERFLOW_HOST_PORT` to use another host port):
+
+```powershell
+curl.exe -u "$env:ORDERFLOW_USER`:$env:ORDERFLOW_PASSWORD" http://localhost:8089/api/v1/products
+```
+
+Swagger UI is at `http://localhost:8089/swagger-ui/index.html` and the OpenAPI JSON at `http://localhost:8089/v3/api-docs`, both with the same credentials.
+
+```powershell
+docker compose logs --tail=50 orderflow-api   # application logs (written to standard output)
+docker compose down                            # stop and remove this project's container
+```
+
+Passing credentials as environment variables is fine for a local demonstration, but it is not a complete secrets-management approach.
+
+**H2 limitations in Docker:** the database is in memory inside the container. All data is lost when the container stops, is restarted by `down`/`up`, or is recreated, and a new empty database is created. Each container would have its own independent database, so the demo must run as a single instance; scaling out would need an external persistent database. Compose deliberately has no volume for this.
 
 ## API status
 
