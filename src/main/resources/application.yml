@@ -23,6 +23,11 @@ spring:
         jdbc:
           time_zone: UTC
 
+logging:
+  pattern:
+    # Adds the request id (set by RequestLoggingFilter) to every log line written during a request.
+    level: "%5p [%X{request_id:-}]"
+
 orderflow:
   auth:
     user: ${ORDERFLOW_USER:}

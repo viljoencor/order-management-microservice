@@ -6,6 +6,9 @@ package com.orderflow.product;
 
 import com.orderflow.product.dto.CreateProductRequest;
 import com.orderflow.product.dto.ProductResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.List;
@@ -21,6 +24,8 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 // Similar to an APIRouter in FastAPI. The controller handles HTTP, not business logic.
 @RestController
 @RequestMapping("/api/v1/products")
+@Tag(name = "Products")
+@ApiResponse(responseCode = "401", description = "Missing or invalid credentials")
 public class ProductController {
 
     private final ProductService productService;
@@ -32,6 +37,9 @@ public class ProductController {
     // @Valid is what triggers the request rules; in FastAPI this happens implicitly.
     // A failure becomes a 400 through Spring's default handling.
     @PostMapping
+    @Operation(summary = "Create a product")
+    @ApiResponse(responseCode = "201", description = "Product created")
+    @ApiResponse(responseCode = "400", description = "Invalid name or price")
     public ResponseEntity<ProductResponse> create(@Valid @RequestBody CreateProductRequest request) {
         ProductResponse created = ProductResponse.from(productService.create(request));
         URI location = ServletUriComponentsBuilder.fromCurrentRequest()
@@ -42,11 +50,14 @@ public class ProductController {
     }
 
     @GetMapping("/{id}")
+    @Operation(summary = "Get a product")
+    @ApiResponse(responseCode = "404", description = "Product not found")
     public ProductResponse getById(@PathVariable Long id) {
         return ProductResponse.from(productService.getById(id));
     }
 
     @GetMapping
+    @Operation(summary = "List all products")
     public List<ProductResponse> list() {
         return productService.list().stream().map(ProductResponse::from).toList();
     }

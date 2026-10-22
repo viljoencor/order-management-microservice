@@ -19,7 +19,7 @@ The aim is to keep the service easy to understand and test, while making deliber
 - **Phase 2 final check:** Confirm the Maven process exits successfully after verification.
 - **Phase 3 - Orders (complete):** Order items, product existence checks, price snapshots and calculated totals in one transaction.
 - **Phase 4 - Errors and tests (complete):** Consistent error responses and broader integration coverage.
-- **Phase 5 - Documentation and logging:** Meaningful request logging, Swagger/OpenAPI and usage examples.
+- **Phase 5 - Documentation and logging (complete):** Request logging with request IDs, Swagger/OpenAPI behind authentication, and usage examples.
 - **Phase 6 - Docker:** Container image and a simple local run option.
 - **Phase 7 - Kubernetes/Rancher:** Optional single-replica deployment example.
 - **Phase 8 - Final review:** Optional CI checks, cleanup and submission verification.
@@ -31,15 +31,18 @@ The aim is to keep the service easy to understand and test, while making deliber
 - Spring MVC, Spring Data JPA and Jakarta Bean Validation
 - H2 in-memory database
 - Spring Security (HTTP Basic)
+- Springdoc OpenAPI 3.1.1 (Swagger UI)
 - JUnit 5, Mockito and Spring MVC integration tests
 
 ## Architecture (current)
 
 ```mermaid
 flowchart TD
-    Client[API client] --> Security[Spring Security - Basic Auth]
+    Client[API client or Swagger UI] --> Log[Request logging filter - request ID]
+    Log --> Security[Spring Security - Basic Auth]
     Security --> PC[Product Controller]
     Security --> OC[Order Controller]
+    Security --> Docs[Swagger UI and OpenAPI JSON]
     PC --> PS[Product Service]
     OC --> OS[Order Service]
     PS --> PR[Product Repository]
@@ -47,9 +50,11 @@ flowchart TD
     OS --> OR[Order Repository]
     PR --> H2[(H2 in-memory database)]
     OR --> H2
+    PC -.-> EH[Global exception handler]
+    OC -.-> EH
 ```
 
-The application uses a simple layered design: controllers handle HTTP, services apply business rules, and repositories handle database access. The order service also reads products (through the product repository) to check they exist and to copy their prices.
+The application uses a simple layered design: controllers handle HTTP, services apply business rules, and repositories handle database access. The order service also reads products (through the product repository) to check they exist and to copy their prices. The logging filter runs first so that even rejected (401) requests are logged, and one exception handler turns errors into consistent JSON responses.
 
 ### Database schema
 
@@ -96,7 +101,38 @@ $env:ORDERFLOW_PASSWORD = "replace-with-a-local-password"
 
 The API uses the default local address `http://localhost:8080` unless configured otherwise. The application requires both credential variables at startup. All API routes require authentication.
 
+To use another port, run the packaged jar with `java -jar target\orderflow-api-0.0.1-SNAPSHOT.jar --server.port=8089` (after `.\mvnw.cmd clean verify`, with the credential variables set).
+
 **Note:** H2 is in memory. Data is lost when the application stops; this is intentional for the exercise.
+
+Quick check from PowerShell once the app is running (use the credentials you set above):
+
+```powershell
+curl.exe -u "$env:ORDERFLOW_USER`:$env:ORDERFLOW_PASSWORD" http://localhost:8080/api/v1/products
+```
+
+## API documentation (Swagger)
+
+With the application running:
+
+- Swagger UI: `http://localhost:8080/swagger-ui/index.html`
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+
+Both require the same HTTP Basic credentials as the API; they are not public. Opening Swagger UI in a browser makes the browser ask for the username and password. Inside Swagger UI the **Authorize** button (scheme `basicAuth`) lets you enter them so that "Try it out" requests are authenticated. The documentation is generated from the controllers and DTOs by Springdoc, with a few short annotations for summaries and status codes.
+
+## Logging
+
+A small filter writes one line per request, after it completes:
+
+```text
+INFO [3f1c...] ... RequestLoggingFilter : request_id=3f1c... method=POST path=/api/v1/orders status=201 duration_ms=38
+```
+
+It also logs `Order created order_id=15 items=3` once an order has been committed; rejected orders do not produce this line.
+
+**Request IDs:** if the client sends an `X-Request-ID` header made of letters, digits, `.`, `_` or `-` (up to 64 characters) it is kept; otherwise a UUID is generated. The effective ID is returned in the `X-Request-ID` response header and appears on every log line written during that request, so a client can quote it when reporting a problem.
+
+Logs contain only the path, never the query string, `Authorization` header, credentials or request/response bodies.
 
 ## API status
 
@@ -187,17 +223,27 @@ Order that references products that do not exist (nothing is saved):
 }
 ```
 
-Unreadable JSON returns the fixed message `Malformed or invalid JSON request`. Unexpected server errors fall back to Spring Boot's default handling, which does not expose internals; request logging is still to come.
+Unreadable JSON returns the fixed message `Malformed or invalid JSON request`. Unexpected server errors return a plain `500` without exception details (checked by a test); the cause is only written to the server log.
 
 ## Design notes
 
 - **One service:** This domain does not need distributed services for the challenge.
+- **Spring MVC:** The work is blocking JPA CRUD, so the simpler servlet stack fits better than WebFlux.
+- **H2 in memory:** The exercise asks for it, and it makes the project easy to run and review.
 - **DTOs separate from entities:** API contracts should not depend on database entities.
 - **`BigDecimal` for money:** Avoid floating-point errors in prices and totals.
 - **Validation at the boundary:** Reject invalid input before persisting it.
 - **Price snapshots:** Each order item stores the product price at the time of ordering, so later price changes do not alter past orders.
 - **Transactions for orders:** Order creation is one transaction. All checks run before saving, and the order and its items are saved together, so a failed order leaves no partial records.
-- **Simple security:** HTTP Basic meets the exercise requirements without a separate identity system.
+- **Simple security:** HTTP Basic meets the exercise requirements without a separate identity system. It sends credentials with every request, so it should only be used over HTTPS outside local development.
+- **Logging without bodies or credentials:** Request bodies and headers can contain personal data or secrets, so logs carry only the request ID, method, path, status and timing.
+
+## Known limitations
+
+- Data is lost when the application restarts, and the service must run as a single instance because H2 is in memory.
+- Lists are not paginated.
+- Products and orders cannot be updated or deleted.
+- The demo uses one configured user; there are no roles or user management.
 
 ## Tests
 
@@ -207,4 +253,4 @@ Run all tests through Maven:
 .\mvnw.cmd clean verify
 ```
 
-Current tests (79) cover product and order service behaviour, authenticated API requests, validation, exact decimal totals, price snapshots, missing products, H2 persistence, rollback of a failed order, and the structure of every error response.
+Current tests (102) cover product and order service behaviour, authenticated API requests, validation, exact decimal totals, price snapshots, missing products, H2 persistence, rollback of a failed order, the structure of every error response, an unexpected 500 error, request logging and request IDs, and the secured Swagger/OpenAPI endpoints.
