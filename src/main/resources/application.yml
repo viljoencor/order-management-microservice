@@ -1,0 +1,25 @@
+# Steps - application.yml
+# Use an in-memory H2 database; data is lost on restart.
+# Let Hibernate create the schema for this exercise and keep the H2 console off.
+# Take the demo credentials from environment variables only.
+spring:
+  application:
+    name: orderflow-api
+  datasource:
+    url: jdbc:h2:mem:orderflow;DB_CLOSE_DELAY=-1
+  h2:
+    console:
+      enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+orderflow:
+  auth:
+    user: ${ORDERFLOW_USER:}
+    password: ${ORDERFLOW_PASSWORD:}
